@@ -30,13 +30,19 @@ import io.gravitee.am.gateway.handler.account.services.AccountService;
 import io.gravitee.am.gateway.handler.common.factor.FactorManager;
 import io.gravitee.am.gateway.handler.common.vertx.RxWebTestBase;
 import io.gravitee.am.gateway.handler.common.vertx.web.handler.ErrorHandler;
+<<<<<<< HEAD
 import io.gravitee.am.identityprovider.api.DefaultUser;
 import io.gravitee.am.service.RateLimiterService;
+=======
+>>>>>>> 05142cd70e (fix: sanitize secret from EnrolledFactor and provide dedicated endpoint for shared secret)
 import io.gravitee.am.model.Factor;
 import io.gravitee.am.model.User;
 import io.gravitee.am.model.factor.EnrolledFactor;
 import io.gravitee.am.model.factor.EnrolledFactorChannel;
 import io.gravitee.am.model.factor.EnrolledFactorSecurity;
+import io.gravitee.am.model.oidc.Client;
+import io.gravitee.am.service.AuditService;
+import io.gravitee.am.service.RateLimiterService;
 import io.reactivex.rxjava3.core.Completable;
 import io.reactivex.rxjava3.core.Maybe;
 import io.reactivex.rxjava3.core.Single;
@@ -61,9 +67,9 @@ import static io.gravitee.am.common.factor.FactorSecurityType.SHARED_SECRET;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
-import static org.mockito.Mockito.when;
-import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
 /**
  * @author Ashraful Hasan (ashraful.hasan at graviteesource.com)
@@ -747,7 +753,12 @@ public class AccountFactorsEndpointHandlerTest extends RxWebTestBase {
 
         EnrolledFactor enrolledFactorCaptorValue = enrolledFactorCaptor.getValue();
         Assert.assertNotNull(enrolledFactorCaptorValue);
+<<<<<<< HEAD
         Assert.assertEquals(SHARED_SECRET, enrolledFactorCaptorValue.getSecurity().getValue());
+=======
+        Assert.assertNull(enrolledFactorCaptorValue.getSecurity());
+        verify(auditService, times(1)).report(any());
+>>>>>>> 05142cd70e (fix: sanitize secret from EnrolledFactor and provide dedicated endpoint for shared secret)
     }
 
     @Test
@@ -794,6 +805,66 @@ public class AccountFactorsEndpointHandlerTest extends RxWebTestBase {
         Assert.assertEquals("1234", enrolledFactorCaptorValue.getChannel().getAdditionalData().get(ConstantKeys.MFA_ENROLLMENT_EXTENSION_PHONE_NUMBER));
     }
 
+<<<<<<< HEAD
+=======
+    @Test
+    public void shouldAuditLog_rateLimit() throws Exception {
+        Factor factor = mock(Factor.class);
+        Client client = mock(Client.class);
+        user.setClient("any-client-id");
+        FactorProvider factorProvider = mock(FactorProvider.class);
+        when(factorProvider.needChallengeSending()).thenReturn(true);
+        when(accountService.getFactor("factor-id")).thenReturn(Maybe.just(factor));
+        when(factorManager.get("factor-id")).thenReturn(factorProvider);
+        when(factorManager.getFactor("factor-id")).thenReturn(factor);
+        when(factor.getId()).thenReturn("any-factor-id");
+        when(rateLimiterService.isRateLimitEnabled()).thenReturn(true);
+        when(rateLimiterService.tryConsume(anyString(), anyString(), anyString(), anyString())).thenReturn(Single.just(Boolean.FALSE));
+        when(client.getDomain()).thenReturn("any-domain-id");
+
+        router.post(AccountRoutes.FACTORS_SEND_CHALLENGE.getRoute())
+                .handler(rc -> {
+                    User user = rc.get(ConstantKeys.USER_CONTEXT_KEY);
+                    EnrolledFactor enrolledFactor = new EnrolledFactor();
+                    enrolledFactor.setFactorId("factor-id");
+                    user.setFactors(Collections.singletonList(enrolledFactor));
+                    rc.put(ConstantKeys.CLIENT_CONTEXT_KEY, client);
+                    rc.next();
+                })
+                .handler(accountFactorsEndpointHandler::sendChallenge)
+                .handler(rc -> rc.response().end());
+
+        testRequest(HttpMethod.POST, "/api/factors/factor-id/sendChallenge", null,
+                429, "Too Many Requests", null);
+
+        verify(auditService, times(1)).report(any());
+    }
+
+    @Test
+    public void shouldReturnSharedSecret() throws Exception {
+        final EnrolledFactor securityEnrolledFactor = new EnrolledFactor();
+        securityEnrolledFactor.setFactorId("factor-id");
+        securityEnrolledFactor.setSecurity(new EnrolledFactorSecurity(SHARED_SECRET, "1234"));
+        user.setFactors(List.of(securityEnrolledFactor));
+
+        router.route(AccountRoutes.FACTORS_OTP_SHARED_SECRET.getRoute())
+                .handler(accountFactorsEndpointHandler::getEnrolledFactorSharedSecretCode)
+                .handler(rc -> rc.response().end());
+
+
+
+        testRequest(HttpMethod.GET, "/api/factors/factor-id/sharedSecret",
+                null,
+                res -> res.bodyHandler(h -> {
+                    assertEquals("{\n" +
+                            "  \"sharedSecret\" : \"1234\"\n" +
+                            "}", h.toString());
+                }),
+                200,
+                "OK", null);
+    }
+
+>>>>>>> 05142cd70e (fix: sanitize secret from EnrolledFactor and provide dedicated endpoint for shared secret)
     private void addFactors(User user) {
         final Map<String, Object> recoveryCode = Map.of(RECOVERY_CODE, Arrays.asList("one", "two", "three"));
         final EnrolledFactor securityEnrolledFactor = new EnrolledFactor();
